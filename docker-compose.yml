@@ -1,0 +1,19 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: marketflow-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: marketflow
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: marketflow
+      MYSQL_PASSWORD: marketflow
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - marketflow-mysql-data:/var/lib/mysql
+
+volumes:
+  marketflow-mysql-data:

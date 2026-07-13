@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: marketflow
+
+  profiles:
+    default: local
