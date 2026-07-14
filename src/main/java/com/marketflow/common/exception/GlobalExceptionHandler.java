@@ -15,4 +15,10 @@ public class GlobalExceptionHandler {
     public ErrorResponse handleNoSuchElementException(NoSuchElementException exception) {
         return new ErrorResponse("NOT_FOUND", exception.getMessage());
     }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleIllegalArgumentException(IllegalArgumentException exception) {
+        return new ErrorResponse("BAD_REQUEST", exception.getMessage());
+    }
 }

@@ -4,6 +4,8 @@ import com.marketflow.product.domain.Product;
 import com.marketflow.product.domain.ProductOption;
 import com.marketflow.product.repository.ProductOptionRepository;
 import com.marketflow.product.repository.ProductRepository;
+import com.marketflow.user.domain.User;
+import com.marketflow.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -18,10 +20,26 @@ public class DataInitializer implements ApplicationRunner {
 
     private final ProductRepository productRepository;
     private final ProductOptionRepository productOptionRepository;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
+        seedUser();
+        seedProducts();
+    }
+
+    private void seedUser() {
+        userRepository.findByEmail("test@marketflow.com")
+                .orElseGet(() -> userRepository.save(new User(
+                        "test@marketflow.com",
+                        "password",
+                        "테스트 사용자",
+                        "010-0000-0000"
+                )));
+    }
+
+    private void seedProducts() {
         if (productRepository.count() > 0) {
             return;
         }
