@@ -1,13 +1,12 @@
 package com.marketflow.product.controller;
 
 import com.marketflow.product.domain.Product;
+import com.marketflow.product.repository.ProductOptionRepository;
 import com.marketflow.product.repository.ProductRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -24,6 +23,9 @@ class ProductControllerTest {
     @Autowired
     private ProductRepository productRepository;
 
+    @Autowired
+    private ProductOptionRepository productOptionRepository;
+
     @Test
     void getProducts() throws Exception {
         mockMvc.perform(get("/api/products"))
@@ -36,9 +38,10 @@ class ProductControllerTest {
 
     @Test
     void getProduct() throws Exception {
-        Product product = productRepository.findByActiveTrue(PageRequest.of(0, 1, Sort.by(Sort.Direction.DESC, "createdAt")))
-                .getContent()
-                .getFirst();
+        Product product = productRepository.findAll().stream()
+                .filter(candidate -> !productOptionRepository.findByProductIdAndActiveTrueOrderByIdAsc(candidate.getId()).isEmpty())
+                .findFirst()
+                .orElseThrow();
 
         mockMvc.perform(get("/api/products/{productId}", product.getId()))
                 .andExpect(status().isOk())

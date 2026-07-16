@@ -1,0 +1,141 @@
+package com.marketflow.order.service;
+
+import com.marketflow.cart.domain.CartItem;
+import com.marketflow.cart.repository.CartItemRepository;
+import com.marketflow.order.domain.Order;
+import com.marketflow.order.domain.OrderItem;
+import com.marketflow.order.dto.OrderCreateRequest;
+import com.marketflow.order.dto.OrderCreateResponse;
+import com.marketflow.order.repository.OrderItemRepository;
+import com.marketflow.order.repository.OrderRepository;
+import com.marketflow.product.domain.ProductOption;
+import com.marketflow.user.domain.User;
+import com.marketflow.user.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Set;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+
+    private static final DateTimeFormatter ORDER_NO_DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;
+    private static final int ORDER_NO_RANDOM_LENGTH = 8;
+    private static final int ORDER_NO_MAX_RETRY_COUNT = 5;
+
+    private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
+    private final CartItemRepository cartItemRepository;
+    private final UserRepository userRepository;
+
+    @Transactional
+    public OrderCreateResponse createOrder(Long userId, OrderCreateRequest request) {
+        User user = getUser(userId);
+        List<Long> cartItemIds = normalizeCartItemIds(request);
+        List<CartItem> cartItems = getCartItems(user.getId(), cartItemIds);
+
+        validateOrderableCartItems(cartItems);
+
+        Long totalAmount = calculateTotalAmount(cartItems);
+        Order order = orderRepository.save(new Order(generateOrderNo(), user, totalAmount));
+
+        decreaseStock(cartItems);
+
+        List<OrderItem> orderItems = cartItems.stream()
+                .map(cartItem -> new OrderItem(order, cartItem.getProductOption(), cartItem.getQuantity()))
+                .toList();
+
+        List<OrderItem> savedOrderItems = orderItemRepository.saveAll(orderItems);
+        cartItemRepository.deleteAll(cartItems);
+
+        return OrderCreateResponse.of(order, savedOrderItems);
+    }
+
+    private User getUser(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new NoSuchElementException("사용자를 찾을 수 없습니다. id=" + userId));
+    }
+
+    private List<Long> normalizeCartItemIds(OrderCreateRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("주문할 장바구니 항목을 선택해야 합니다.");
+        }
+
+        List<Long> cartItemIds = request.cartItemIds();
+        if (cartItemIds == null || cartItemIds.isEmpty()) {
+            throw new IllegalArgumentException("주문할 장바구니 항목을 선택해야 합니다.");
+        }
+
+        Set<Long> uniqueCartItemIds = new LinkedHashSet<>();
+        for (Long cartItemId : cartItemIds) {
+            if (cartItemId == null) {
+                throw new IllegalArgumentException("장바구니 항목 ID는 null일 수 없습니다.");
+            }
+            uniqueCartItemIds.add(cartItemId);
+        }
+
+        return List.copyOf(uniqueCartItemIds);
+    }
+
+    private List<CartItem> getCartItems(Long userId, List<Long> cartItemIds) {
+        List<CartItem> cartItems = cartItemRepository.findByUserIdAndIdInOrderByIdAsc(userId, cartItemIds);
+
+        if (cartItems.size() != cartItemIds.size()) {
+            throw new NoSuchElementException("주문할 장바구니 항목을 찾을 수 없습니다.");
+        }
+
+        return cartItems;
+    }
+
+    private void validateOrderableCartItems(List<CartItem> cartItems) {
+        for (CartItem cartItem : cartItems) {
+            ProductOption productOption = cartItem.getProductOption();
+
+            if (!productOption.isActive()) {
+                throw new IllegalArgumentException("비활성 상품 옵션은 주문할 수 없습니다.");
+            }
+
+            if (productOption.getStockQuantity() < cartItem.getQuantity()) {
+                throw new IllegalArgumentException("재고가 부족합니다.");
+            }
+        }
+    }
+
+    private void decreaseStock(List<CartItem> cartItems) {
+        cartItems.forEach(cartItem -> cartItem.getProductOption().decreaseStock(cartItem.getQuantity()));
+    }
+
+    private Long calculateTotalAmount(List<CartItem> cartItems) {
+        return cartItems.stream()
+                .mapToLong(cartItem -> {
+                    ProductOption productOption = cartItem.getProductOption();
+                    return productOption.getPrice() * cartItem.getQuantity();
+                })
+                .sum();
+    }
+
+    private String generateOrderNo() {
+        for (int retryCount = 0; retryCount < ORDER_NO_MAX_RETRY_COUNT; retryCount++) {
+            String orderNo = LocalDate.now().format(ORDER_NO_DATE_FORMATTER)
+                    + UUID.randomUUID()
+                    .toString()
+                    .replace("-", "")
+                    .substring(0, ORDER_NO_RANDOM_LENGTH)
+                    .toUpperCase();
+
+            if (!orderRepository.existsByOrderNo(orderNo)) {
+                return orderNo;
+            }
+        }
+
+        throw new IllegalStateException("주문 번호를 생성할 수 없습니다.");
+    }
+}
