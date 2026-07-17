@@ -9,12 +9,14 @@ import com.marketflow.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 @Component
+@Profile("local")
 @RequiredArgsConstructor
 public class DataInitializer implements ApplicationRunner {
 

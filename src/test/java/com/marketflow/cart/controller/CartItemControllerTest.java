@@ -2,15 +2,18 @@ package com.marketflow.cart.controller;
 
 import com.marketflow.cart.domain.CartItem;
 import com.marketflow.cart.repository.CartItemRepository;
+import com.marketflow.order.repository.OrderItemRepository;
+import com.marketflow.order.repository.OrderRepository;
+import com.marketflow.product.domain.Product;
 import com.marketflow.product.domain.ProductOption;
 import com.marketflow.product.repository.ProductOptionRepository;
+import com.marketflow.product.repository.ProductRepository;
+import com.marketflow.support.IntegrationTest;
 import com.marketflow.user.domain.User;
 import com.marketflow.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -24,9 +27,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
-@AutoConfigureMockMvc
-class CartItemControllerTest {
+class CartItemControllerTest extends IntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -35,7 +36,16 @@ class CartItemControllerTest {
     private CartItemRepository cartItemRepository;
 
     @Autowired
+    private OrderItemRepository orderItemRepository;
+
+    @Autowired
+    private OrderRepository orderRepository;
+
+    @Autowired
     private ProductOptionRepository productOptionRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -45,9 +55,24 @@ class CartItemControllerTest {
 
     @BeforeEach
     void setUp() {
+        orderItemRepository.deleteAll();
+        orderRepository.deleteAll();
         cartItemRepository.deleteAll();
-        user = userRepository.findByEmail("test@marketflow.com").orElseThrow();
-        productOption = productOptionRepository.findAll().getFirst();
+        userRepository.deleteAll();
+
+        user = userRepository.save(new User(
+                "cart-test@marketflow.com",
+                "password",
+                "장바구니 테스트 사용자",
+                "010-1111-1111"
+        ));
+        Product product = productRepository.save(new Product(
+                "Cart Test Product",
+                "장바구니 테스트 상품입니다.",
+                "TEST",
+                "https://example.com/images/cart-test-product.jpg"
+        ));
+        productOption = productOptionRepository.save(new ProductOption(product, "Default Option", 1000L, 10));
     }
 
     @Test

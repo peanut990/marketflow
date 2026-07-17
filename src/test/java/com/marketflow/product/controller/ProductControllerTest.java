@@ -1,21 +1,20 @@
 package com.marketflow.product.controller;
 
 import com.marketflow.product.domain.Product;
+import com.marketflow.product.domain.ProductOption;
 import com.marketflow.product.repository.ProductOptionRepository;
 import com.marketflow.product.repository.ProductRepository;
+import com.marketflow.support.IntegrationTest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
-@AutoConfigureMockMvc
-class ProductControllerTest {
+class ProductControllerTest extends IntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -25,6 +24,19 @@ class ProductControllerTest {
 
     @Autowired
     private ProductOptionRepository productOptionRepository;
+
+    private Product product;
+
+    @BeforeEach
+    void setUp() {
+        product = productRepository.save(new Product(
+                "Product API Test Product",
+                "상품 API 테스트 상품입니다.",
+                "TEST",
+                "https://example.com/images/product-api-test-product.jpg"
+        ));
+        productOptionRepository.save(new ProductOption(product, "Default Option", 1000L, 10));
+    }
 
     @Test
     void getProducts() throws Exception {
@@ -38,11 +50,6 @@ class ProductControllerTest {
 
     @Test
     void getProduct() throws Exception {
-        Product product = productRepository.findAll().stream()
-                .filter(candidate -> !productOptionRepository.findByProductIdAndActiveTrueOrderByIdAsc(candidate.getId()).isEmpty())
-                .findFirst()
-                .orElseThrow();
-
         mockMvc.perform(get("/api/products/{productId}", product.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(product.getId()))

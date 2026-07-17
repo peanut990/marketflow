@@ -10,13 +10,12 @@ import com.marketflow.product.domain.Product;
 import com.marketflow.product.domain.ProductOption;
 import com.marketflow.product.repository.ProductOptionRepository;
 import com.marketflow.product.repository.ProductRepository;
+import com.marketflow.support.IntegrationTest;
 import com.marketflow.user.domain.User;
 import com.marketflow.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -27,9 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
-@AutoConfigureMockMvc
-class OrderControllerTest {
+class OrderControllerTest extends IntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -60,8 +57,14 @@ class OrderControllerTest {
         orderItemRepository.deleteAll();
         orderRepository.deleteAll();
         cartItemRepository.deleteAll();
+        userRepository.deleteAll();
 
-        user = userRepository.findByEmail("test@marketflow.com").orElseThrow();
+        user = userRepository.save(new User(
+                "order-test@marketflow.com",
+                "password",
+                "주문 테스트 사용자",
+                "010-2222-2222"
+        ));
         product = productRepository.save(new Product(
                 "Order Test Product",
                 "주문 테스트 상품입니다.",

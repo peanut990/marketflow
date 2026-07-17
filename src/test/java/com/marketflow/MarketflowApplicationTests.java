@@ -1,10 +1,9 @@
 package com.marketflow;
 
+import com.marketflow.support.IntegrationTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
-class MarketflowApplicationTests {
+class MarketflowApplicationTests extends IntegrationTest {
 
     @Test
     void contextLoads() {

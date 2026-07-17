@@ -14,6 +14,7 @@ services:
       - --collation-server=utf8mb4_unicode_ci
     volumes:
       - marketflow-mysql-data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
 
 volumes:
   marketflow-mysql-data:

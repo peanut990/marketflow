@@ -20,6 +20,7 @@ Spring Boot 기반의 커머스 API 프로젝트입니다. 현재는 상품/상�
 | `src/main/resources/application-local.yml` | 제외 | 로컬 개발용 실제 DB 설정 |
 | `src/main/resources/application-local.sample.yml` | 포함 | 로컬 개발용 설정 샘플 |
 | `src/main/resources/application-prod.yml` | 포함 | 배포용 설정, 환경변수 기반 |
+| `src/test/resources/application-test.yml` | 포함 | 테스트용 MySQL DB 설정 |
 | `.env` | 제외 | 배포/실행 환경의 실제 환경변수 |
 | `.env.sample` | 포함 | 필요한 환경변수 샘플 |
 
@@ -45,9 +46,16 @@ docker compose up -d mysql
 
 ```text
 database: marketflow
+test database: marketflow_test
 username: marketflow
 password: marketflow
 port: 3306
+```
+
+`docker-compose.yml`은 MySQL 컨테이너 최초 초기화 시 `marketflow_test`도 함께 생성합니다. 이미 기존 볼륨이 있는 상태라면 초기화 SQL이 다시 실행되지 않으므로, 테스트 DB가 없을 때는 아래 명령으로 직접 생성합니다.
+
+```bash
+docker compose exec mysql mysql -uroot -proot -e "CREATE DATABASE IF NOT EXISTS marketflow_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON marketflow_test.* TO 'marketflow'@'%'; FLUSH PRIVILEGES;"
 ```
 
 ### 3. 애플리케이션 실행
@@ -73,13 +81,19 @@ curl 'http://localhost:8080/api/products/1'
 
 ## 테스트
 
+테스트는 `test` 프로필과 테스트 전용 DB `marketflow_test`를 사용합니다. 로컬 개발 DB `marketflow`와 분리되어 있으므로 테스트의 `save()` / `deleteAll()`은 `marketflow_test`에만 적용됩니다.
+
 로컬 MySQL이 실행 중인 상태에서 테스트를 실행합니다.
 
 ```bash
 ./gradlew test
 ```
 
-현재 테스트는 `local` 기본 프로필과 MySQL 설정을 사용합니다.
+테스트 설정은 기본적으로 다음 DB를 바라봅니다.
+
+```text
+jdbc:mysql://localhost:3306/marketflow_test
+```
 
 ## 배포 설정
 
@@ -112,3 +126,15 @@ export JPA_DDL_AUTO=validate
 
 ./gradlew bootRun
 ```
+
+## CI 테스트 기준
+
+CI에서는 운영 MySQL 서버를 사용하지 않습니다. GitHub Actions 같은 배포 파이프라인에서는 CI 전용 MySQL service/container를 띄우고 그 안의 `marketflow_test` DB로 테스트합니다.
+
+테스트 실행 프로필은 `test`입니다.
+
+```bash
+SPRING_PROFILES_ACTIVE=test ./gradlew test
+```
+
+`prod` 프로필은 실제 애플리케이션 배포 실행용이며, 테스트 실행에는 사용하지 않습니다.
