@@ -6,12 +6,16 @@ import com.marketflow.order.domain.Order;
 import com.marketflow.order.domain.OrderItem;
 import com.marketflow.order.dto.OrderCreateRequest;
 import com.marketflow.order.dto.OrderCreateResponse;
+import com.marketflow.order.dto.OrderDetailResponse;
+import com.marketflow.order.dto.OrderSummaryResponse;
 import com.marketflow.order.repository.OrderItemRepository;
 import com.marketflow.order.repository.OrderRepository;
 import com.marketflow.product.domain.ProductOption;
 import com.marketflow.user.domain.User;
 import com.marketflow.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +40,22 @@ public class OrderService {
     private final CartItemRepository cartItemRepository;
     private final UserRepository userRepository;
 
+    @Transactional(readOnly = true)
+    public Page<OrderSummaryResponse> getOrders(Long userId, Pageable pageable) {
+        User user = getUser(userId);
+
+        return orderRepository.findByUserId(user.getId(), pageable)
+                .map(OrderSummaryResponse::from);
+    }
+
+    @Transactional(readOnly = true)
+    public OrderDetailResponse getOrder(Long userId, Long orderId) {
+        Order order = getOrderByUser(userId, orderId);
+        List<OrderItem> orderItems = getOrderItems(order.getId());
+
+        return OrderDetailResponse.of(order, orderItems);
+    }
+
     @Transactional
     public OrderCreateResponse createOrder(Long userId, OrderCreateRequest request) {
         User user = getUser(userId);
@@ -59,9 +79,31 @@ public class OrderService {
         return OrderCreateResponse.of(order, savedOrderItems);
     }
 
+    @Transactional
+    public OrderDetailResponse cancelOrder(Long userId, Long orderId) {
+        Order order = getOrderByUser(userId, orderId);
+        List<OrderItem> orderItems = getOrderItems(order.getId());
+
+        order.cancel();
+        orderItems.forEach(orderItem ->
+                orderItem.getProductOption().increaseStock(orderItem.getQuantity())
+        );
+
+        return OrderDetailResponse.of(order, orderItems);
+    }
+
     private User getUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new NoSuchElementException("사용자를 찾을 수 없습니다. id=" + userId));
+    }
+
+    private Order getOrderByUser(Long userId, Long orderId) {
+        return orderRepository.findByUserIdAndId(userId, orderId)
+                .orElseThrow(() -> new NoSuchElementException("주문을 찾을 수 없습니다. id=" + orderId));
+    }
+
+    private List<OrderItem> getOrderItems(Long orderId) {
+        return orderItemRepository.findByOrderIdOrderByIdAsc(orderId);
     }
 
     private List<Long> normalizeCartItemIds(OrderCreateRequest request) {
