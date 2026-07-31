@@ -11,6 +11,7 @@ import com.marketflow.order.dto.OrderSummaryResponse;
 import com.marketflow.order.repository.OrderItemRepository;
 import com.marketflow.order.repository.OrderRepository;
 import com.marketflow.product.domain.ProductOption;
+import com.marketflow.product.repository.ProductOptionRepository;
 import com.marketflow.user.domain.User;
 import com.marketflow.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,9 +24,12 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -38,6 +42,7 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final CartItemRepository cartItemRepository;
+    private final ProductOptionRepository productOptionRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
@@ -61,16 +66,21 @@ public class OrderService {
         User user = getUser(userId);
         List<Long> cartItemIds = normalizeCartItemIds(request);
         List<CartItem> cartItems = getCartItems(user.getId(), cartItemIds);
+        Map<Long, ProductOption> lockedProductOptions = getLockedProductOptions(cartItems);
 
-        validateOrderableCartItems(cartItems);
+        validateOrderableCartItems(cartItems, lockedProductOptions);
 
-        Long totalAmount = calculateTotalAmount(cartItems);
+        Long totalAmount = calculateTotalAmount(cartItems, lockedProductOptions);
         Order order = orderRepository.save(new Order(generateOrderNo(), user, totalAmount));
 
-        decreaseStock(cartItems);
+        decreaseStock(cartItems, lockedProductOptions);
 
         List<OrderItem> orderItems = cartItems.stream()
-                .map(cartItem -> new OrderItem(order, cartItem.getProductOption(), cartItem.getQuantity()))
+                .map(cartItem -> new OrderItem(
+                        order,
+                        getLockedProductOption(cartItem, lockedProductOptions),
+                        cartItem.getQuantity()
+                ))
                 .toList();
 
         List<OrderItem> savedOrderItems = orderItemRepository.saveAll(orderItems);
@@ -128,7 +138,7 @@ public class OrderService {
     }
 
     private List<CartItem> getCartItems(Long userId, List<Long> cartItemIds) {
-        List<CartItem> cartItems = cartItemRepository.findByUserIdAndIdInOrderByIdAsc(userId, cartItemIds);
+        List<CartItem> cartItems = cartItemRepository.findAllByUserIdAndIdInOrderByIdAsc(userId, cartItemIds);
 
         if (cartItems.size() != cartItemIds.size()) {
             throw new NoSuchElementException("주문할 장바구니 항목을 찾을 수 없습니다.");
@@ -137,9 +147,36 @@ public class OrderService {
         return cartItems;
     }
 
-    private void validateOrderableCartItems(List<CartItem> cartItems) {
+    private Map<Long, ProductOption> getLockedProductOptions(List<CartItem> cartItems) {
+        List<Long> productOptionIds = cartItems.stream()
+                .map(cartItem -> cartItem.getProductOption().getId())
+                .distinct()
+                .sorted()
+                .toList();
+
+        List<ProductOption> productOptions = productOptionRepository.findAllByIdInWithPessimisticLock(productOptionIds);
+        if (productOptions.size() != productOptionIds.size()) {
+            throw new NoSuchElementException("상품 옵션을 찾을 수 없습니다.");
+        }
+
+        return productOptions.stream()
+                .collect(Collectors.toMap(ProductOption::getId, Function.identity()));
+    }
+
+    private ProductOption getLockedProductOption(CartItem cartItem, Map<Long, ProductOption> lockedProductOptions) {
+        Long productOptionId = cartItem.getProductOption().getId();
+        ProductOption productOption = lockedProductOptions.get(productOptionId);
+
+        if (productOption == null) {
+            throw new NoSuchElementException("상품 옵션을 찾을 수 없습니다. id=" + productOptionId);
+        }
+
+        return productOption;
+    }
+
+    private void validateOrderableCartItems(List<CartItem> cartItems, Map<Long, ProductOption> lockedProductOptions) {
         for (CartItem cartItem : cartItems) {
-            ProductOption productOption = cartItem.getProductOption();
+            ProductOption productOption = getLockedProductOption(cartItem, lockedProductOptions);
 
             if (!productOption.isActive()) {
                 throw new IllegalArgumentException("비활성 상품 옵션은 주문할 수 없습니다.");
@@ -151,14 +188,16 @@ public class OrderService {
         }
     }
 
-    private void decreaseStock(List<CartItem> cartItems) {
-        cartItems.forEach(cartItem -> cartItem.getProductOption().decreaseStock(cartItem.getQuantity()));
+    private void decreaseStock(List<CartItem> cartItems, Map<Long, ProductOption> lockedProductOptions) {
+        cartItems.forEach(cartItem ->
+                getLockedProductOption(cartItem, lockedProductOptions).decreaseStock(cartItem.getQuantity())
+        );
     }
 
-    private Long calculateTotalAmount(List<CartItem> cartItems) {
+    private Long calculateTotalAmount(List<CartItem> cartItems, Map<Long, ProductOption> lockedProductOptions) {
         return cartItems.stream()
                 .mapToLong(cartItem -> {
-                    ProductOption productOption = cartItem.getProductOption();
+                    ProductOption productOption = getLockedProductOption(cartItem, lockedProductOptions);
                     return productOption.getPrice() * cartItem.getQuantity();
                 })
                 .sum();
