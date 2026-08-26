@@ -12,6 +12,7 @@ import com.marketflow.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -63,7 +64,7 @@ class ProductOptionStockConcurrencyTest extends IntegrationTest {
     }
 
     @Test
-    void decreaseStockConcurrentlyWithoutLockCanLoseUpdates() throws Exception {
+    void decreaseStockConcurrentlyWithOptimisticLockShouldDetectConflicts() throws Exception {
         Product product = productRepository.save(new Product(
                 "Lost Update Test Product",
                 "갱신 손실 테스트 상품입니다.",
@@ -119,9 +120,12 @@ class ProductOptionStockConcurrencyTest extends IntegrationTest {
 
         ProductOption updatedProductOption = productOptionRepository.findById(productOption.getId()).orElseThrow();
 
-        assertThat(successCount.get()).isEqualTo(THREAD_COUNT);
-        assertThat(failures).isEmpty();
-        assertThat(updatedProductOption.getStockQuantity()).isNotZero();
+        assertThat(successCount.get()).isBetween(1, THREAD_COUNT - 1);
+        assertThat(failures)
+                .hasSize(THREAD_COUNT - successCount.get())
+                .allSatisfy(failure -> assertThat(failure).isInstanceOf(OptimisticLockingFailureException.class));
+        assertThat(updatedProductOption.getStockQuantity())
+                .isEqualTo(INITIAL_STOCK_QUANTITY - successCount.get() * DECREASE_QUANTITY);
     }
 
     private void await(CountDownLatch latch) {

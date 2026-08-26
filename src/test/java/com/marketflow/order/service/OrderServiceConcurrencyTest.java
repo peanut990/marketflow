@@ -112,50 +112,71 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
         } finally {
             executorService.shutdownNow();
         }
-//        List<Throwable> failures = new CopyOnWriteArrayList<>();
-//
-//        AtomicInteger successCount = new AtomicInteger();
-//        for (OrderAttempt orderAttempt : orderAttempts) {
-//            executorService.submit(() -> {
-//
-//                try {
-//
-//                    orderService.createOrder(
-//
-//                            orderAttempt.userId(),
-//
-//                            new OrderCreateRequest(List.of(orderAttempt.cartItemId()))
-//
-//                    );
-//
-//                    successCount.incrementAndGet();
-//
-//                } catch (Throwable throwable) {
-//
-//                    failures.add(throwable);
-//
-//                }
-//
-//            });
-//        }
-//
-//
-//        executorService.shutdown();
-//
-//        boolean completed = executorService.awaitTermination(30, TimeUnit.SECONDS);
-//
         ProductOption updatedProductOption = productOptionRepository.findById(productOption.getId()).orElseThrow();
 
-        System.out.println(updatedProductOption.getStockQuantity() + "####################");
-        System.out.println("successCount = " + successCount.get());
-        System.out.println("failureCount = " + failures.size());
-
-        failures.forEach(Throwable::printStackTrace);
         assertThat(successCount.get()).isEqualTo(USER_COUNT);
         assertThat(failures).isEmpty();
         assertThat(orderRepository.count()).isEqualTo(USER_COUNT);
         assertThat(orderItemRepository.count()).isEqualTo(USER_COUNT);
         assertThat(cartItemRepository.count()).isZero();
+        assertThat(updatedProductOption.getStockQuantity()).isZero();
+    }
+
+    @Test
+    void createOrderConcurrentlyWithOneStockShouldCreateOneOrderAndNeverMakeStockNegative() throws Exception {
+        Product product = productRepository.save(new Product(
+                "Depleted Stock Test Product",
+                "재고 소진 동시성 테스트 상품입니다.",
+                "TEST",
+                "https://example.com/images/depleted-stock-test-product.jpg"
+        ));
+        ProductOption productOption = productOptionRepository.save(new ProductOption(
+                product,
+                "Depleted Stock Test Option",
+                1000L,
+                1
+        ));
+        List<OrderAttempt> orderAttempts = createOrderAttempts(productOption);
+
+        ExecutorService executorService = Executors.newFixedThreadPool(USER_COUNT);
+        CountDownLatch readyLatch = new CountDownLatch(USER_COUNT);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(USER_COUNT);
+        AtomicInteger successCount = new AtomicInteger();
+        List<Throwable> failures = new CopyOnWriteArrayList<>();
+
+        try {
+            for (OrderAttempt orderAttempt : orderAttempts) {
+                executorService.submit(() -> {
+                    try {
+                        readyLatch.countDown();
+                        startLatch.await();
+                        orderService.createOrder(
+                                orderAttempt.userId(),
+                                new OrderCreateRequest(List.of(orderAttempt.cartItemId()))
+                        );
+                        successCount.incrementAndGet();
+                    } catch (Throwable throwable) {
+                        failures.add(throwable);
+                    } finally {
+                        doneLatch.countDown();
+                    }
+                });
+            }
+
+            assertThat(readyLatch.await(5, TimeUnit.SECONDS)).isTrue();
+            startLatch.countDown();
+            assertThat(doneLatch.await(10, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            executorService.shutdownNow();
+        }
+        ProductOption updatedProductOption = productOptionRepository.findById(productOption.getId()).orElseThrow();
+
+        assertThat(successCount.get()).isEqualTo(1);
+        assertThat(failures).hasSize(USER_COUNT - 1);
+        assertThat(orderRepository.count()).isEqualTo(1);
+        assertThat(orderItemRepository.count()).isEqualTo(1);
+        assertThat(cartItemRepository.count()).isEqualTo(USER_COUNT - 1);
         assertThat(updatedProductOption.getStockQuantity()).isZero();
     }
 

@@ -48,6 +48,9 @@ public class ProductOption extends BaseEntity {
     @Column(nullable = false)
     private boolean active;
 
+    @Version
+    private Long version;
+
     public ProductOption(Product product, String name, Long price, int stockQuantity) {
         this.product = product;
         this.name = name;

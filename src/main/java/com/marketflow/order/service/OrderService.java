@@ -15,21 +15,21 @@ import com.marketflow.product.repository.ProductOptionRepository;
 import com.marketflow.user.domain.User;
 import com.marketflow.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -38,12 +38,14 @@ public class OrderService {
     private static final DateTimeFormatter ORDER_NO_DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;
     private static final int ORDER_NO_RANDOM_LENGTH = 8;
     private static final int ORDER_NO_MAX_RETRY_COUNT = 5;
+    private static final int ORDER_CREATE_MAX_RETRY_COUNT = 10;
 
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final CartItemRepository cartItemRepository;
     private final ProductOptionRepository productOptionRepository;
     private final UserRepository userRepository;
+    private final TransactionTemplate transactionTemplate;
 
     @Transactional(readOnly = true)
     public Page<OrderSummaryResponse> getOrders(Long userId, Pageable pageable) {
@@ -61,24 +63,37 @@ public class OrderService {
         return OrderDetailResponse.of(order, orderItems);
     }
 
-    @Transactional
     public OrderCreateResponse createOrder(Long userId, OrderCreateRequest request) {
+        OptimisticLockingFailureException lastFailure = null;
+
+        for (int retryCount = 0; retryCount < ORDER_CREATE_MAX_RETRY_COUNT; retryCount++) {
+            try {
+                return transactionTemplate.execute(status -> createOrderInTransaction(userId, request));
+            } catch (OptimisticLockingFailureException exception) {
+                lastFailure = exception;
+            }
+        }
+
+        throw lastFailure;
+    }
+
+    private OrderCreateResponse createOrderInTransaction(Long userId, OrderCreateRequest request) {
         User user = getUser(userId);
         List<Long> cartItemIds = normalizeCartItemIds(request);
         List<CartItem> cartItems = getCartItems(user.getId(), cartItemIds);
-        Map<Long, ProductOption> lockedProductOptions = getLockedProductOptions(cartItems);
 
-        validateOrderableCartItems(cartItems, lockedProductOptions);
+        validateOrderableCartItems(cartItems);
 
-        Long totalAmount = calculateTotalAmount(cartItems, lockedProductOptions);
+        Long totalAmount = calculateTotalAmount(cartItems);
         Order order = orderRepository.save(new Order(generateOrderNo(), user, totalAmount));
 
-        decreaseStock(cartItems, lockedProductOptions);
+        decreaseStock(cartItems);
+        productOptionRepository.flush();
 
         List<OrderItem> orderItems = cartItems.stream()
                 .map(cartItem -> new OrderItem(
                         order,
-                        getLockedProductOption(cartItem, lockedProductOptions),
+                        cartItem.getProductOption(),
                         cartItem.getQuantity()
                 ))
                 .toList();
@@ -138,7 +153,7 @@ public class OrderService {
     }
 
     private List<CartItem> getCartItems(Long userId, List<Long> cartItemIds) {
-        List<CartItem> cartItems = cartItemRepository.findAllByUserIdAndIdInOrderByIdAsc(userId, cartItemIds);
+        List<CartItem> cartItems = cartItemRepository.findByUserIdAndIdInOrderByIdAsc(userId, cartItemIds);
 
         if (cartItems.size() != cartItemIds.size()) {
             throw new NoSuchElementException("주문할 장바구니 항목을 찾을 수 없습니다.");
@@ -147,36 +162,9 @@ public class OrderService {
         return cartItems;
     }
 
-    private Map<Long, ProductOption> getLockedProductOptions(List<CartItem> cartItems) {
-        List<Long> productOptionIds = cartItems.stream()
-                .map(cartItem -> cartItem.getProductOption().getId())
-                .distinct()
-                .sorted()
-                .toList();
-
-        List<ProductOption> productOptions = productOptionRepository.findAllByIdInWithPessimisticLock(productOptionIds);
-        if (productOptions.size() != productOptionIds.size()) {
-            throw new NoSuchElementException("상품 옵션을 찾을 수 없습니다.");
-        }
-
-        return productOptions.stream()
-                .collect(Collectors.toMap(ProductOption::getId, Function.identity()));
-    }
-
-    private ProductOption getLockedProductOption(CartItem cartItem, Map<Long, ProductOption> lockedProductOptions) {
-        Long productOptionId = cartItem.getProductOption().getId();
-        ProductOption productOption = lockedProductOptions.get(productOptionId);
-
-        if (productOption == null) {
-            throw new NoSuchElementException("상품 옵션을 찾을 수 없습니다. id=" + productOptionId);
-        }
-
-        return productOption;
-    }
-
-    private void validateOrderableCartItems(List<CartItem> cartItems, Map<Long, ProductOption> lockedProductOptions) {
+    private void validateOrderableCartItems(List<CartItem> cartItems) {
         for (CartItem cartItem : cartItems) {
-            ProductOption productOption = getLockedProductOption(cartItem, lockedProductOptions);
+            ProductOption productOption = cartItem.getProductOption();
 
             if (!productOption.isActive()) {
                 throw new IllegalArgumentException("비활성 상품 옵션은 주문할 수 없습니다.");
@@ -188,16 +176,16 @@ public class OrderService {
         }
     }
 
-    private void decreaseStock(List<CartItem> cartItems, Map<Long, ProductOption> lockedProductOptions) {
-        cartItems.forEach(cartItem ->
-                getLockedProductOption(cartItem, lockedProductOptions).decreaseStock(cartItem.getQuantity())
-        );
+    private void decreaseStock(List<CartItem> cartItems) {
+        cartItems.stream()
+                .sorted(Comparator.comparing(cartItem -> cartItem.getProductOption().getId()))
+                .forEach(cartItem -> cartItem.getProductOption().decreaseStock(cartItem.getQuantity()));
     }
 
-    private Long calculateTotalAmount(List<CartItem> cartItems, Map<Long, ProductOption> lockedProductOptions) {
+    private Long calculateTotalAmount(List<CartItem> cartItems) {
         return cartItems.stream()
                 .mapToLong(cartItem -> {
-                    ProductOption productOption = getLockedProductOption(cartItem, lockedProductOptions);
+                    ProductOption productOption = cartItem.getProductOption();
                     return productOption.getPrice() * cartItem.getQuantity();
                 })
                 .sum();
