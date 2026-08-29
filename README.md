@@ -1,6 +1,8 @@
 # Marketflow
 
-Spring Boot 기반의 커머스 API 프로젝트입니다. 현재는 상품/상품 옵션 엔티티, 더미 데이터 초기화, 상품 목록/상세 조회 API를 포함합니다.
+Spring Boot 기반의 커머스 API 프로젝트입니다. 현재는 상품/상품 옵션 엔티티, 더미 데이터 초기화, 상품 목록/상세 조회 API, 장바구니 기반 주문 생성 기능을 포함합니다.
+
+재고 차감은 상품 옵션 `@Version` 낙관적 락, 주문 생성 retry, 10~50ms random backoff로 정합성을 제어합니다. 관련 동시성 테스트와 해석은 [재고 차감 동시성 제어 문서](docs/stock-concurrency-optimistic-lock.md)를 참고합니다.
 
 ## 기술 스택
 

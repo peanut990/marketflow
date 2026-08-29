@@ -15,6 +15,7 @@ import com.marketflow.support.IntegrationTest;
 import com.marketflow.user.domain.User;
 import com.marketflow.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -242,12 +243,14 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
                 .hasMessage("비활성 상품 옵션은 주문할 수 없습니다.");
     }
 
+    @Tag("contention")
     @ParameterizedTest(name = "같은 상품 옵션 동시 주문={0}, 재고={1}")
     @CsvSource({
             "5, 5",
             "10, 10",
             "30, 30",
-            "50, 50"
+            "50, 50",
+            "100, 10"
     })
     void 같은_상품_옵션_경합_상황별_성공과_실패를_관찰한다(int requestCount, int initialStockQuantity) throws Exception {
         Product product = productRepository.save(new Product(
@@ -284,7 +287,7 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
 
         assertThat(result.totalCount()).isEqualTo(requestCount);
         assertThat(result.unexpectedFailureCount()).isZero();
-        assertThat(result.successCount()).isBetween(0, requestCount);
+        assertThat(result.successCount()).isBetween(0, initialStockQuantity);
         assertThat(orderRepository.count()).isEqualTo(result.successCount());
         assertThat(orderItemRepository.count()).isEqualTo(result.successCount());
         assertThat(cartItemRepository.count()).isEqualTo(requestCount - result.successCount());

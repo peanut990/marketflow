@@ -55,6 +55,35 @@ productOptionRepository.flush();
 
 추가로 재고 1개에 사용자 10명이 동시에 주문하는 테스트를 두었다. 최종 성공 주문은 1건이고, 재고는 0 아래로 내려가지 않는다.
 
+`@Tag("contention")`이 붙은 경합 관찰 테스트는 같은 상품 옵션에 여러 요청을 동시에 넣고 아래 형태의 로그를 남긴다.
+
+```text
+[same-option-contention] requests=100, initialStock=10, success=..., stockShortageFailure=..., retryExhaustedFailure=..., unexpectedFailure=0, remainingStock=..., orders=..., orderItems=..., cartItems=..., elapsedMillis=...
+```
+
+각 값은 다음 기준으로 해석한다.
+
+- `success`: 주문 생성까지 완료된 요청 수. 항상 최초 재고 이하이어야 한다.
+- `stockShortageFailure`: 재시도 중 최신 재고를 다시 읽었을 때 이미 재고가 부족해서 실패한 요청 수.
+- `retryExhaustedFailure`: 낙관적 락 충돌이 최대 시도 횟수까지 반복되어 실패한 요청 수.
+- `unexpectedFailure`: 테스트가 분류하지 않은 실패 수. 0이어야 한다.
+- `remainingStock`: 최종 상품 옵션 재고. `initialStock - success`와 같고 음수가 아니어야 한다.
+- `elapsedMillis`: 해당 시나리오의 전체 동시 주문 처리 시간. 스레드 스케줄링과 DB 타이밍 영향을 받으므로 참고값으로만 본다.
+
+`100 requests / stock 10` 시나리오는 정확히 몇 건이 재고 부족과 retry 소진으로 나뉘는지를 고정하지 않는다. 핵심 관찰값은 성공 주문이 최대 10건으로 제한되고, 주문/주문상품/장바구니 수와 최종 재고가 성공 수에 맞게 보존되며, 재고가 음수가 되지 않는다는 점이다.
+
+아래는 로컬 MySQL 테스트 DB에서 확인한 실행 로그 예시다.
+
+```text
+[same-option-contention] requests=5, initialStock=5, success=5, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=5, orderItems=5, cartItems=0, elapsedMillis=128
+[same-option-contention] requests=10, initialStock=10, success=10, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=10, orderItems=10, cartItems=0, elapsedMillis=160
+[same-option-contention] requests=30, initialStock=30, success=29, stockShortageFailure=0, retryExhaustedFailure=1, unexpectedFailure=0, remainingStock=1, orders=29, orderItems=29, cartItems=1, elapsedMillis=391
+[same-option-contention] requests=50, initialStock=50, success=49, stockShortageFailure=0, retryExhaustedFailure=1, unexpectedFailure=0, remainingStock=1, orders=49, orderItems=49, cartItems=1, elapsedMillis=381
+[same-option-contention] requests=100, initialStock=10, success=10, stockShortageFailure=90, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=10, orderItems=10, cartItems=90, elapsedMillis=135
+```
+
+이 실행에서는 재고와 요청 수가 같은 5/5, 10/10은 모두 성공했다. 30/30, 50/50은 retry 소진 요청이 1건씩 발생했지만 성공 수만큼만 재고가 차감되어 남은 재고와 장바구니 수가 일치했다. 100/10은 10건만 성공하고 나머지 90건은 재고 부족으로 실패해, 과판매 없이 재고 0을 유지했다.
+
 ```bash
 ./gradlew test --tests "*ProductOptionStockConcurrencyTest"
 ./gradlew test --tests "*OrderServiceConcurrencyTest"
