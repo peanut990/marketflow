@@ -76,7 +76,7 @@ class CartItemControllerTest extends IntegrationTest {
     }
 
     @Test
-    void getCartItems() throws Exception {
+    void 장바구니_목록을_조회한다() throws Exception {
         cartItemRepository.save(new CartItem(user, productOption, 2));
 
         mockMvc.perform(get("/api/cart-items")
@@ -93,7 +93,7 @@ class CartItemControllerTest extends IntegrationTest {
     }
 
     @Test
-    void addCartItem() throws Exception {
+    void 장바구니에_상품을_추가한다() throws Exception {
         mockMvc.perform(post("/api/cart-items")
                         .header("X-USER-ID", user.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -114,7 +114,7 @@ class CartItemControllerTest extends IntegrationTest {
     }
 
     @Test
-    void addCartItemIncreasesQuantityWhenSameProductOptionExists() throws Exception {
+    void 같은_상품_옵션이_이미_있으면_수량을_증가시킨다() throws Exception {
         cartItemRepository.save(new CartItem(user, productOption, 2));
 
         mockMvc.perform(post("/api/cart-items")
@@ -136,7 +136,7 @@ class CartItemControllerTest extends IntegrationTest {
     }
 
     @Test
-    void updateCartItem() throws Exception {
+    void 장바구니_항목_수량을_수정한다() throws Exception {
         CartItem cartItem = cartItemRepository.save(new CartItem(user, productOption, 2));
 
         mockMvc.perform(patch("/api/cart-items/{cartItemId}", cartItem.getId())
@@ -153,7 +153,7 @@ class CartItemControllerTest extends IntegrationTest {
     }
 
     @Test
-    void deleteCartItem() throws Exception {
+    void 장바구니_항목을_삭제한다() throws Exception {
         CartItem cartItem = cartItemRepository.save(new CartItem(user, productOption, 2));
 
         mockMvc.perform(delete("/api/cart-items/{cartItemId}", cartItem.getId())
@@ -164,7 +164,7 @@ class CartItemControllerTest extends IntegrationTest {
     }
 
     @Test
-    void addCartItemWithInvalidQuantity() throws Exception {
+    void 잘못된_수량으로_장바구니_추가에_실패한다() throws Exception {
         mockMvc.perform(post("/api/cart-items")
                         .header("X-USER-ID", user.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -179,7 +179,7 @@ class CartItemControllerTest extends IntegrationTest {
     }
 
     @Test
-    void getCartItemsWithUnknownUser() throws Exception {
+    void 존재하지_않는_사용자의_장바구니_조회는_404를_반환한다() throws Exception {
         mockMvc.perform(get("/api/cart-items")
                         .header("X-USER-ID", Long.MAX_VALUE))
                 .andExpect(status().isNotFound())
@@ -187,7 +187,7 @@ class CartItemControllerTest extends IntegrationTest {
     }
 
     @Test
-    void addCartItemWithUnknownProductOption() throws Exception {
+    void 존재하지_않는_상품_옵션_추가는_404를_반환한다() throws Exception {
         mockMvc.perform(post("/api/cart-items")
                         .header("X-USER-ID", user.getId())
                         .contentType(MediaType.APPLICATION_JSON)

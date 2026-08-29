@@ -11,6 +11,8 @@ import com.marketflow.order.dto.OrderSummaryResponse;
 import com.marketflow.order.repository.OrderItemRepository;
 import com.marketflow.order.repository.OrderRepository;
 import com.marketflow.product.domain.ProductOption;
+import com.marketflow.product.exception.InactiveProductOptionException;
+import com.marketflow.product.exception.InsufficientStockException;
 import com.marketflow.product.repository.ProductOptionRepository;
 import com.marketflow.user.domain.User;
 import com.marketflow.user.repository.UserRepository;
@@ -191,11 +193,11 @@ public class OrderService {
             ProductOption productOption = cartItem.getProductOption();
 
             if (!productOption.isActive()) {
-                throw new IllegalArgumentException("비활성 상품 옵션은 주문할 수 없습니다.");
+                throw new InactiveProductOptionException();
             }
 
             if (productOption.getStockQuantity() < cartItem.getQuantity()) {
-                throw new IllegalArgumentException("재고가 부족합니다.");
+                throw new InsufficientStockException();
             }
         }
     }

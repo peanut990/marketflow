@@ -39,7 +39,7 @@ class ProductControllerTest extends IntegrationTest {
     }
 
     @Test
-    void getProducts() throws Exception {
+    void 상품_목록을_조회한다() throws Exception {
         mockMvc.perform(get("/api/products"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray())
@@ -49,7 +49,7 @@ class ProductControllerTest extends IntegrationTest {
     }
 
     @Test
-    void getProduct() throws Exception {
+    void 상품_상세를_조회한다() throws Exception {
         mockMvc.perform(get("/api/products/{productId}", product.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(product.getId()))
@@ -60,7 +60,7 @@ class ProductControllerTest extends IntegrationTest {
     }
 
     @Test
-    void getProductNotFound() throws Exception {
+    void 존재하지_않는_상품_조회는_404를_반환한다() throws Exception {
         mockMvc.perform(get("/api/products/{productId}", Long.MAX_VALUE))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"))

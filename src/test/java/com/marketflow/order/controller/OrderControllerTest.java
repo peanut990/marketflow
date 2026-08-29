@@ -84,7 +84,7 @@ class OrderControllerTest extends IntegrationTest {
     }
 
     @Test
-    void getOrders() throws Exception {
+    void 주문_목록을_조회한다() throws Exception {
         ProductOption firstOption = productOptionRepository.save(new ProductOption(product, "First Option", 1000L, 10));
         ProductOption secondOption = productOptionRepository.save(new ProductOption(product, "Second Option", 2500L, 10));
         Order createdOrder = createOrderWithItem(user, firstOption, 2);
@@ -109,7 +109,7 @@ class OrderControllerTest extends IntegrationTest {
     }
 
     @Test
-    void getOrder() throws Exception {
+    void 주문_상세를_조회한다() throws Exception {
         ProductOption productOption = productOptionRepository.save(new ProductOption(product, "Detail Option", 1500L, 10));
         Order order = createOrderWithItem(user, productOption, 3);
 
@@ -132,7 +132,7 @@ class OrderControllerTest extends IntegrationTest {
     }
 
     @Test
-    void createOrder() throws Exception {
+    void 주문을_생성한다() throws Exception {
         ProductOption firstOption = productOptionRepository.save(new ProductOption(product, "First Option", 1000L, 10));
         ProductOption secondOption = productOptionRepository.save(new ProductOption(product, "Second Option", 2500L, 8));
         CartItem firstCartItem = cartItemRepository.save(new CartItem(user, firstOption, 2));
@@ -174,7 +174,7 @@ class OrderControllerTest extends IntegrationTest {
     }
 
     @Test
-    void createOrderRollsBackWhenSecondProductOptionIsOutOfStock() throws Exception {
+    void 두번째_상품_옵션의_재고가_부족하면_주문_생성을_롤백한다() throws Exception {
         ProductOption firstOption = productOptionRepository.save(new ProductOption(product, "Enough Stock Option", 1000L, 10));
         ProductOption secondOption = productOptionRepository.save(new ProductOption(product, "Out Of Stock Option", 2500L, 1));
         CartItem firstCartItem = cartItemRepository.save(new CartItem(user, firstOption, 2));
@@ -189,7 +189,8 @@ class OrderControllerTest extends IntegrationTest {
                                 }
                                 """.formatted(firstCartItem.getId(), secondCartItem.getId())))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+                .andExpect(jsonPath("$.code").value("INSUFFICIENT_STOCK"))
+                .andExpect(jsonPath("$.message").value("재고가 부족합니다."));
 
         ProductOption updatedFirstOption = productOptionRepository.findById(firstOption.getId()).orElseThrow();
         ProductOption updatedSecondOption = productOptionRepository.findById(secondOption.getId()).orElseThrow();
@@ -203,7 +204,7 @@ class OrderControllerTest extends IntegrationTest {
     }
 
     @Test
-    void createOrderFailsWhenInactiveProductOptionIsIncluded() throws Exception {
+    void 비활성_상품_옵션이_포함되면_주문_생성에_실패한다() throws Exception {
         ProductOption firstOption = productOptionRepository.save(new ProductOption(product, "Active Option", 1000L, 10));
         ProductOption secondOption = productOptionRepository.save(new ProductOption(product, "Inactive Option", 2500L, 8));
         secondOption.deactivate();
@@ -220,7 +221,8 @@ class OrderControllerTest extends IntegrationTest {
                                 }
                                 """.formatted(firstCartItem.getId(), secondCartItem.getId())))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+                .andExpect(jsonPath("$.code").value("INACTIVE_PRODUCT_OPTION"))
+                .andExpect(jsonPath("$.message").value("비활성 상품 옵션은 주문할 수 없습니다."));
 
         ProductOption updatedFirstOption = productOptionRepository.findById(firstOption.getId()).orElseThrow();
         ProductOption updatedSecondOption = productOptionRepository.findById(secondOption.getId()).orElseThrow();
@@ -234,7 +236,7 @@ class OrderControllerTest extends IntegrationTest {
     }
 
     @Test
-    void createOrderWithEmptyCartItemIds() throws Exception {
+    void 주문할_장바구니_항목이_비어있으면_주문_생성에_실패한다() throws Exception {
         mockMvc.perform(post("/api/orders")
                         .header("X-USER-ID", user.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -248,7 +250,7 @@ class OrderControllerTest extends IntegrationTest {
     }
 
     @Test
-    void createOrderWithUnknownCartItem() throws Exception {
+    void 존재하지_않는_장바구니_항목으로_주문_생성하면_404를_반환한다() throws Exception {
         mockMvc.perform(post("/api/orders")
                         .header("X-USER-ID", user.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -262,7 +264,7 @@ class OrderControllerTest extends IntegrationTest {
     }
 
     @Test
-    void getOrderNotFoundWhenOrderDoesNotExist() throws Exception {
+    void 존재하지_않는_주문_조회는_404를_반환한다() throws Exception {
         mockMvc.perform(get("/api/orders/{orderId}", Long.MAX_VALUE)
                         .header("X-USER-ID", user.getId()))
                 .andExpect(status().isNotFound())
@@ -270,7 +272,7 @@ class OrderControllerTest extends IntegrationTest {
     }
 
     @Test
-    void getOrderNotFoundWhenOrderBelongsToAnotherUser() throws Exception {
+    void 다른_사용자의_주문_조회는_404를_반환한다() throws Exception {
         ProductOption productOption = productOptionRepository.save(new ProductOption(product, "Other User Option", 1000L, 10));
         Order order = createOrderWithItem(otherUser, productOption, 1);
 
@@ -281,7 +283,7 @@ class OrderControllerTest extends IntegrationTest {
     }
 
     @Test
-    void cancelOrder() throws Exception {
+    void 주문을_취소한다() throws Exception {
         ProductOption productOption = productOptionRepository.save(new ProductOption(product, "Cancel Option", 1000L, 10));
         Order order = createOrderWithItem(user, productOption, 3);
         productOption.decreaseStock(3);
@@ -304,7 +306,7 @@ class OrderControllerTest extends IntegrationTest {
     }
 
     @Test
-    void cancelOrderFailsWhenAlreadyCanceled() throws Exception {
+    void 이미_취소된_주문은_다시_취소할_수_없다() throws Exception {
         ProductOption productOption = productOptionRepository.save(new ProductOption(product, "Already Canceled Option", 1000L, 10));
         Order order = createOrderWithItem(user, productOption, 1);
         order.cancel();
@@ -317,7 +319,7 @@ class OrderControllerTest extends IntegrationTest {
     }
 
     @Test
-    void cancelOrderNotFoundWhenOrderBelongsToAnotherUser() throws Exception {
+    void 다른_사용자의_주문_취소는_404를_반환한다() throws Exception {
         ProductOption productOption = productOptionRepository.save(new ProductOption(product, "Other User Cancel Option", 1000L, 10));
         Order order = createOrderWithItem(otherUser, productOption, 1);
 

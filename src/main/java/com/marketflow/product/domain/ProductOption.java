@@ -1,6 +1,7 @@
 package com.marketflow.product.domain;
 
 import com.marketflow.common.entity.BaseEntity;
+import com.marketflow.product.exception.InsufficientStockException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -63,7 +64,7 @@ public class ProductOption extends BaseEntity {
         validatePositiveQuantity(quantity);
 
         if (this.stockQuantity < quantity) {
-            throw new IllegalArgumentException("재고가 부족합니다.");
+            throw new InsufficientStockException();
         }
 
         this.stockQuantity -= quantity;

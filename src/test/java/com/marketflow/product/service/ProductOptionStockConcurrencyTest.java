@@ -64,7 +64,7 @@ class ProductOptionStockConcurrencyTest extends IntegrationTest {
     }
 
     @Test
-    void decreaseStockConcurrentlyWithOptimisticLockShouldDetectConflicts() throws Exception {
+    void 낙관적_락으로_동시_재고_차감_충돌을_감지한다() throws Exception {
         Product product = productRepository.save(new Product(
                 "Lost Update Test Product",
                 "갱신 손실 테스트 상품입니다.",

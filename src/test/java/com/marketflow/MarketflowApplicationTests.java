@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 class MarketflowApplicationTests extends IntegrationTest {
 
     @Test
-    void contextLoads() {
+    void 애플리케이션_컨텍스트가_로드된다() {
     }
 
 }
