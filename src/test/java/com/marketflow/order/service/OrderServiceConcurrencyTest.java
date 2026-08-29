@@ -14,6 +14,8 @@ import com.marketflow.user.domain.User;
 import com.marketflow.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.ArrayList;
@@ -180,10 +182,61 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
         assertThat(updatedProductOption.getStockQuantity()).isZero();
     }
 
+    @ParameterizedTest(name = "same option orders={0}, stock={1}")
+    @CsvSource({
+            "5, 5",
+            "10, 10",
+            "30, 30",
+            "50, 50"
+    })
+    void observeCreateOrderContentionScenarios(int requestCount, int initialStockQuantity) throws Exception {
+        Product product = productRepository.save(new Product(
+                "Contention Scenario Test Product " + requestCount,
+                "경합 상황별 테스트 상품입니다.",
+                "TEST",
+                "https://example.com/images/contention-scenario-test-product.jpg"
+        ));
+        ProductOption productOption = productOptionRepository.save(new ProductOption(
+                product,
+                "Contention Scenario Test Option",
+                1000L,
+                initialStockQuantity
+        ));
+        List<OrderAttempt> orderAttempts = createOrderAttempts(productOption, requestCount);
+
+        OrderExecutionResult result = executeConcurrentOrders(orderAttempts, requestCount);
+        ProductOption updatedProductOption = productOptionRepository.findById(productOption.getId()).orElseThrow();
+
+        System.out.printf(
+                "[same-option-contention] requests=%d, initialStock=%d, success=%d, failure=%d, remainingStock=%d, orders=%d, orderItems=%d, cartItems=%d, elapsedMillis=%d%n",
+                requestCount,
+                initialStockQuantity,
+                result.successCount(),
+                result.failureCount(),
+                updatedProductOption.getStockQuantity(),
+                orderRepository.count(),
+                orderItemRepository.count(),
+                cartItemRepository.count(),
+                result.elapsedMillis()
+        );
+
+        assertThat(result.successCount() + result.failureCount()).isEqualTo(requestCount);
+        assertThat(result.successCount()).isBetween(0, requestCount);
+        assertThat(orderRepository.count()).isEqualTo(result.successCount());
+        assertThat(orderItemRepository.count()).isEqualTo(result.successCount());
+        assertThat(cartItemRepository.count()).isEqualTo(requestCount - result.successCount());
+        assertThat(updatedProductOption.getStockQuantity()).isEqualTo(initialStockQuantity - result.successCount());
+        assertThat(updatedProductOption.getStockQuantity()).isNotNegative();
+    }
+
     private List<OrderAttempt> createOrderAttempts(ProductOption productOption) {
+        return createOrderAttempts(productOption, USER_COUNT);
+    }
+
+    private List<OrderAttempt> createOrderAttempts(ProductOption productOption, int userCount) {
         List<OrderAttempt> orderAttempts = new ArrayList<>();
 
-        for (int index = 0; index < USER_COUNT; index++) {
+        for (int index = 0; index < userCount; index++) {
             User user = userRepository.save(new User(
                     "concurrency-order-test-" + index + "@marketflow.com",
                     "password",
@@ -197,6 +250,51 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
         return orderAttempts;
     }
 
+    private OrderExecutionResult executeConcurrentOrders(List<OrderAttempt> orderAttempts, int threadCount) throws Exception {
+        ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch readyLatch = new CountDownLatch(threadCount);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(threadCount);
+        AtomicInteger successCount = new AtomicInteger();
+        List<Throwable> failures = new CopyOnWriteArrayList<>();
+        long startedAtMillis = System.currentTimeMillis();
+
+        try {
+            for (OrderAttempt orderAttempt : orderAttempts) {
+                executorService.submit(() -> {
+                    try {
+                        readyLatch.countDown();
+                        startLatch.await();
+                        orderService.createOrder(
+                                orderAttempt.userId(),
+                                new OrderCreateRequest(List.of(orderAttempt.cartItemId()))
+                        );
+                        successCount.incrementAndGet();
+                    } catch (Throwable throwable) {
+                        failures.add(throwable);
+                    } finally {
+                        doneLatch.countDown();
+                    }
+                });
+            }
+
+            assertThat(readyLatch.await(5, TimeUnit.SECONDS)).isTrue();
+            startLatch.countDown();
+            assertThat(doneLatch.await(30, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            executorService.shutdownNow();
+        }
+
+        return new OrderExecutionResult(
+                successCount.get(),
+                failures.size(),
+                System.currentTimeMillis() - startedAtMillis
+        );
+    }
+
     private record OrderAttempt(Long userId, Long cartItemId) {
+    }
+
+    private record OrderExecutionResult(int successCount, int failureCount, long elapsedMillis) {
     }
 }

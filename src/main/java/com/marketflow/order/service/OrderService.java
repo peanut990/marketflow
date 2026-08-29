@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +40,8 @@ public class OrderService {
     private static final int ORDER_NO_RANDOM_LENGTH = 8;
     private static final int ORDER_NO_MAX_RETRY_COUNT = 5;
     private static final int ORDER_CREATE_MAX_RETRY_COUNT = 10;
+    private static final long ORDER_CREATE_RETRY_BACKOFF_MIN_MILLIS = 10L;
+    private static final long ORDER_CREATE_RETRY_BACKOFF_MAX_MILLIS = 50L;
 
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
@@ -71,10 +74,31 @@ public class OrderService {
                 return transactionTemplate.execute(status -> createOrderInTransaction(userId, request));
             } catch (OptimisticLockingFailureException exception) {
                 lastFailure = exception;
+                backoffBeforeRetry(retryCount, exception);
             }
         }
 
         throw lastFailure;
+    }
+
+    private void backoffBeforeRetry(int retryCount, OptimisticLockingFailureException exception) {
+        if (retryCount == ORDER_CREATE_MAX_RETRY_COUNT - 1) {
+            return;
+        }
+
+        try {
+            Thread.sleep(calculateRandomBackoffMillis());
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            throw exception;
+        }
+    }
+
+    private long calculateRandomBackoffMillis() {
+        return ThreadLocalRandom.current().nextLong(
+                ORDER_CREATE_RETRY_BACKOFF_MIN_MILLIS,
+                ORDER_CREATE_RETRY_BACKOFF_MAX_MILLIS + 1
+        );
     }
 
     private OrderCreateResponse createOrderInTransaction(Long userId, OrderCreateRequest request) {

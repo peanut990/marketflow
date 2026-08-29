@@ -28,9 +28,11 @@ Hibernate는 재고 UPDATE 시 version 조건을 함께 사용한다. 먼저 커
 ```text
 최대 시도: 10회
 재시도 예외: OptimisticLockingFailureException
-backoff: 없음
+backoff: 10~50ms 랜덤 대기
 최종 실패: OptimisticLockingFailureException 그대로 전파
 ```
+
+충돌한 요청들이 즉시 같은 타이밍에 재시도하면 다시 같은 version을 읽고 충돌할 수 있다. 짧은 랜덤 backoff를 넣어 재시도 타이밍을 분산한다.
 
 재시도는 주문 생성에만 적용했다. 주문 취소 시 재고 복구 충돌 처리는 별도 실험 대상으로 남긴다.
 
