@@ -45,7 +45,9 @@ decreaseStock(cartItems);
 productOptionRepository.flush();
 ```
 
-목적은 `product_options` version UPDATE를 `order_items` INSERT보다 먼저 실행하는 것이다. 충돌을 빠르게 감지하면 해당 시도의 `Order`, `OrderItem`, 장바구니 삭제는 같은 트랜잭션 안에서 롤백된다. Repository `flush()`를 사용해 낙관적 락 예외가 Spring의 `OptimisticLockingFailureException` 계층으로 변환되도록 한다.
+목적은 `product_options` version UPDATE를 주문 저장보다 먼저 실행하는 것이다. Repository `flush()`를 사용해 낙관적 락 예외가 Spring의 `OptimisticLockingFailureException` 계층으로 변환되도록 한다.
+
+주문 row 생성은 재고 차감과 `flush()`가 성공한 뒤에 수행한다. 이렇게 하면 낙관적 락 충돌 요청은 `orders` INSERT, `order_items` INSERT, 장바구니 삭제까지 진행하지 않고 재시도된다. 트랜잭션 롤백은 여전히 필요하지만, 충돌 시 롤백해야 하는 DB 작업을 줄일 수 있다.
 
 ## 테스트
 
@@ -75,14 +77,14 @@ productOptionRepository.flush();
 아래는 로컬 MySQL 테스트 DB에서 확인한 실행 로그 예시다.
 
 ```text
-[same-option-contention] requests=5, initialStock=5, success=5, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=5, orderItems=5, cartItems=0, elapsedMillis=128
-[same-option-contention] requests=10, initialStock=10, success=10, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=10, orderItems=10, cartItems=0, elapsedMillis=160
-[same-option-contention] requests=30, initialStock=30, success=29, stockShortageFailure=0, retryExhaustedFailure=1, unexpectedFailure=0, remainingStock=1, orders=29, orderItems=29, cartItems=1, elapsedMillis=391
-[same-option-contention] requests=50, initialStock=50, success=49, stockShortageFailure=0, retryExhaustedFailure=1, unexpectedFailure=0, remainingStock=1, orders=49, orderItems=49, cartItems=1, elapsedMillis=381
-[same-option-contention] requests=100, initialStock=10, success=10, stockShortageFailure=90, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=10, orderItems=10, cartItems=90, elapsedMillis=135
+[same-option-contention] requests=5, initialStock=5, success=5, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=5, orderItems=5, cartItems=0, elapsedMillis=62
+[same-option-contention] requests=10, initialStock=10, success=10, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=10, orderItems=10, cartItems=0, elapsedMillis=130
+[same-option-contention] requests=30, initialStock=30, success=30, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=30, orderItems=30, cartItems=0, elapsedMillis=268
+[same-option-contention] requests=50, initialStock=50, success=48, stockShortageFailure=0, retryExhaustedFailure=2, unexpectedFailure=0, remainingStock=2, orders=48, orderItems=48, cartItems=2, elapsedMillis=347
+[same-option-contention] requests=100, initialStock=10, success=10, stockShortageFailure=90, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=10, orderItems=10, cartItems=90, elapsedMillis=123
 ```
 
-이 실행에서는 재고와 요청 수가 같은 5/5, 10/10은 모두 성공했다. 30/30, 50/50은 retry 소진 요청이 1건씩 발생했지만 성공 수만큼만 재고가 차감되어 남은 재고와 장바구니 수가 일치했다. 100/10은 10건만 성공하고 나머지 90건은 재고 부족으로 실패해, 과판매 없이 재고 0을 유지했다.
+이 실행에서는 재고와 요청 수가 같은 5/5, 10/10, 30/30은 모두 성공했다. 50/50은 retry 소진 요청이 2건 발생했지만 성공 수만큼만 재고가 차감되어 남은 재고와 장바구니 수가 일치했다. 100/10은 10건만 성공하고 나머지 90건은 재고 부족으로 실패해, 과판매 없이 재고 0을 유지했다.
 
 ```bash
 ./gradlew test --tests "*ProductOptionStockConcurrencyTest"

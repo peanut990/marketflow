@@ -111,11 +111,11 @@ public class OrderService {
         validateOrderableCartItems(cartItems);
 
         Long totalAmount = calculateTotalAmount(cartItems);
-        Order order = orderRepository.save(new Order(generateOrderNo(), user, totalAmount));
 
         decreaseStock(cartItems);
         productOptionRepository.flush();
 
+        Order order = orderRepository.save(new Order(generateOrderNo(), user, totalAmount));
         List<OrderItem> orderItems = cartItems.stream()
                 .map(cartItem -> new OrderItem(
                         order,
