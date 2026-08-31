@@ -12,7 +12,6 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -48,9 +47,6 @@ public class ProductOption extends BaseEntity {
 
     @Column(nullable = false)
     private boolean active;
-
-    @Version
-    private Long version;
 
     public ProductOption(Product product, String name, Long price, int stockQuantity) {
         this.product = product;

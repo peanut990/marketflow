@@ -20,7 +20,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.OptimisticLockingFailureException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -287,6 +286,7 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
 
         assertThat(result.totalCount()).isEqualTo(requestCount);
         assertThat(result.unexpectedFailureCount()).isZero();
+        assertThat(result.retryExhaustedFailureCount()).isZero();
         assertThat(result.successCount()).isBetween(0, initialStockQuantity);
         assertThat(orderRepository.count()).isEqualTo(result.successCount());
         assertThat(orderItemRepository.count()).isEqualTo(result.successCount());
@@ -323,7 +323,6 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
         CountDownLatch doneLatch = new CountDownLatch(threadCount);
         AtomicInteger successCount = new AtomicInteger();
         AtomicInteger stockShortageFailureCount = new AtomicInteger();
-        AtomicInteger retryExhaustedFailureCount = new AtomicInteger();
         List<Throwable> unexpectedFailures = new CopyOnWriteArrayList<>();
         long startedAtMillis = System.currentTimeMillis();
 
@@ -340,8 +339,6 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
                         successCount.incrementAndGet();
                     } catch (InsufficientStockException exception) {
                         stockShortageFailureCount.incrementAndGet();
-                    } catch (OptimisticLockingFailureException exception) {
-                        retryExhaustedFailureCount.incrementAndGet();
                     } catch (Throwable throwable) {
                         unexpectedFailures.add(throwable);
                     } finally {
@@ -360,7 +357,7 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
         return new OrderExecutionResult(
                 successCount.get(),
                 stockShortageFailureCount.get(),
-                retryExhaustedFailureCount.get(),
+                0,
                 unexpectedFailures.size(),
                 System.currentTimeMillis() - startedAtMillis
         );

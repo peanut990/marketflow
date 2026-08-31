@@ -17,12 +17,10 @@ import com.marketflow.product.repository.ProductOptionRepository;
 import com.marketflow.user.domain.User;
 import com.marketflow.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -32,7 +30,6 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 @RequiredArgsConstructor
@@ -41,16 +38,12 @@ public class OrderService {
     private static final DateTimeFormatter ORDER_NO_DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;
     private static final int ORDER_NO_RANDOM_LENGTH = 8;
     private static final int ORDER_NO_MAX_RETRY_COUNT = 5;
-    private static final int ORDER_CREATE_MAX_RETRY_COUNT = 10;
-    private static final long ORDER_CREATE_RETRY_BACKOFF_MIN_MILLIS = 10L;
-    private static final long ORDER_CREATE_RETRY_BACKOFF_MAX_MILLIS = 50L;
 
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final CartItemRepository cartItemRepository;
     private final ProductOptionRepository productOptionRepository;
     private final UserRepository userRepository;
-    private final TransactionTemplate transactionTemplate;
 
     @Transactional(readOnly = true)
     public Page<OrderSummaryResponse> getOrders(Long userId, Pageable pageable) {
@@ -68,42 +61,8 @@ public class OrderService {
         return OrderDetailResponse.of(order, orderItems);
     }
 
+    @Transactional
     public OrderCreateResponse createOrder(Long userId, OrderCreateRequest request) {
-        OptimisticLockingFailureException lastFailure = null;
-
-        for (int retryCount = 0; retryCount < ORDER_CREATE_MAX_RETRY_COUNT; retryCount++) {
-            try {
-                return transactionTemplate.execute(status -> createOrderInTransaction(userId, request));
-            } catch (OptimisticLockingFailureException exception) {
-                lastFailure = exception;
-                backoffBeforeRetry(retryCount, exception);
-            }
-        }
-
-        throw lastFailure;
-    }
-
-    private void backoffBeforeRetry(int retryCount, OptimisticLockingFailureException exception) {
-        if (retryCount == ORDER_CREATE_MAX_RETRY_COUNT - 1) {
-            return;
-        }
-
-        try {
-            Thread.sleep(calculateRandomBackoffMillis());
-        } catch (InterruptedException interruptedException) {
-            Thread.currentThread().interrupt();
-            throw exception;
-        }
-    }
-
-    private long calculateRandomBackoffMillis() {
-        return ThreadLocalRandom.current().nextLong(
-                ORDER_CREATE_RETRY_BACKOFF_MIN_MILLIS,
-                ORDER_CREATE_RETRY_BACKOFF_MAX_MILLIS + 1
-        );
-    }
-
-    private OrderCreateResponse createOrderInTransaction(Long userId, OrderCreateRequest request) {
         User user = getUser(userId);
         List<Long> cartItemIds = normalizeCartItemIds(request);
         List<CartItem> cartItems = getCartItems(user.getId(), cartItemIds);
@@ -113,7 +72,6 @@ public class OrderService {
         Long totalAmount = calculateTotalAmount(cartItems);
 
         decreaseStock(cartItems);
-        productOptionRepository.flush();
 
         Order order = orderRepository.save(new Order(generateOrderNo(), user, totalAmount));
         List<OrderItem> orderItems = cartItems.stream()
@@ -205,7 +163,16 @@ public class OrderService {
     private void decreaseStock(List<CartItem> cartItems) {
         cartItems.stream()
                 .sorted(Comparator.comparing(cartItem -> cartItem.getProductOption().getId()))
-                .forEach(cartItem -> cartItem.getProductOption().decreaseStock(cartItem.getQuantity()));
+                .forEach(cartItem -> {
+                    int affectedRows = productOptionRepository.decreaseStockAtomically(
+                            cartItem.getProductOption().getId(),
+                            cartItem.getQuantity()
+                    );
+
+                    if (affectedRows != 1) {
+                        throw new InsufficientStockException();
+                    }
+                });
     }
 
     private Long calculateTotalAmount(List<CartItem> cartItems) {
