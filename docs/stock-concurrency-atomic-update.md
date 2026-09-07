@@ -54,19 +54,26 @@ Atomic UPDATE 재고 차감
 [same-option-contention] requests=100, initialStock=10, success=..., stockShortageFailure=..., retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=..., orders=..., orderItems=..., cartItems=..., elapsedMillis=...
 ```
 
-Atomic UPDATE 방식에서는 낙관적 락 retry를 사용하지 않으므로 `retryExhaustedFailure`는 0이어야 한다. `100 requests / stock 10` 시나리오의 핵심 관찰값은 성공 주문이 최대 10건이고, 나머지는 재고 부족으로 실패하며, 최종 재고가 0 아래로 내려가지 않는다는 점이다.
+Atomic UPDATE 방식에서는 낙관적 락 retry를 사용하지 않으므로 `retryExhaustedFailure`는 0이어야 한다. 재고와 요청 수가 같은 고경합 시나리오에서는 재고가 충분한 만큼 모두 성공하는지 보고, `100 requests / stock 10` 이상의 품절 경합 시나리오에서는 성공 주문이 최대 10건으로 제한되고 최종 재고가 0 아래로 내려가지 않는지 본다.
 
 아래는 로컬 MySQL 테스트 DB에서 확인한 실행 로그 예시다.
 
 ```text
-[same-option-contention] requests=5, initialStock=5, success=5, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=5, orderItems=5, cartItems=0, elapsedMillis=28
-[same-option-contention] requests=10, initialStock=10, success=10, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=10, orderItems=10, cartItems=0, elapsedMillis=45
-[same-option-contention] requests=30, initialStock=30, success=30, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=30, orderItems=30, cartItems=0, elapsedMillis=109
-[same-option-contention] requests=50, initialStock=50, success=50, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=50, orderItems=50, cartItems=0, elapsedMillis=157
-[same-option-contention] requests=100, initialStock=10, success=10, stockShortageFailure=90, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=10, orderItems=10, cartItems=90, elapsedMillis=66
+[same-option-contention] requests=5, initialStock=5, success=5, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=5, orderItems=5, cartItems=0, elapsedMillis=22
+[same-option-contention] requests=10, initialStock=10, success=10, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=10, orderItems=10, cartItems=0, elapsedMillis=39
+[same-option-contention] requests=30, initialStock=30, success=30, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=30, orderItems=30, cartItems=0, elapsedMillis=103
+[same-option-contention] requests=50, initialStock=50, success=50, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=50, orderItems=50, cartItems=0, elapsedMillis=159
+[same-option-contention] requests=100, initialStock=100, success=100, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=100, orderItems=100, cartItems=0, elapsedMillis=281
+[same-option-contention] requests=300, initialStock=300, success=300, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=300, orderItems=300, cartItems=0, elapsedMillis=757
+[same-option-contention] requests=500, initialStock=500, success=500, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=500, orderItems=500, cartItems=0, elapsedMillis=1147
+[same-option-contention] requests=1000, initialStock=1000, success=1000, stockShortageFailure=0, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=1000, orderItems=1000, cartItems=0, elapsedMillis=2522
+[same-option-contention] requests=100, initialStock=10, success=10, stockShortageFailure=90, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=10, orderItems=10, cartItems=90, elapsedMillis=45
+[same-option-contention] requests=300, initialStock=10, success=10, stockShortageFailure=290, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=10, orderItems=10, cartItems=290, elapsedMillis=101
+[same-option-contention] requests=500, initialStock=10, success=10, stockShortageFailure=490, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=10, orderItems=10, cartItems=490, elapsedMillis=176
+[same-option-contention] requests=1000, initialStock=10, success=10, stockShortageFailure=990, retryExhaustedFailure=0, unexpectedFailure=0, remainingStock=0, orders=10, orderItems=10, cartItems=990, elapsedMillis=427
 ```
 
-이 실행에서는 재고와 요청 수가 같은 5/5, 10/10, 30/30, 50/50은 모두 성공했다. 100/10은 10건만 성공하고 나머지 90건은 재고 부족으로 실패해, 과판매 없이 재고 0을 유지했다.
+이 실행에서는 재고와 요청 수가 같은 5/5, 10/10, 30/30, 50/50, 100/100, 300/300, 500/500, 1000/1000이 모두 성공했다. 100/10, 300/10, 500/10, 1000/10은 모두 10건만 성공하고 나머지는 재고 부족으로 실패해, 과판매 없이 재고 0을 유지했다.
 
 ```bash
 ./gradlew test --tests "*ProductOptionStockConcurrencyTest"

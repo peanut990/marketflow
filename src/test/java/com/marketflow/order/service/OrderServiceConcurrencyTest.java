@@ -249,7 +249,14 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
             "10, 10",
             "30, 30",
             "50, 50",
-            "100, 10"
+            "100, 100",
+            "300, 300",
+            "500, 500",
+            "1000, 1000",
+            "100, 10",
+            "300, 10",
+            "500, 10",
+            "1000, 10"
     })
     void 같은_상품_옵션_경합_상황별_성공과_실패를_관찰한다(int requestCount, int initialStockQuantity) throws Exception {
         Product product = productRepository.save(new Product(
@@ -349,7 +356,7 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
 
             assertThat(readyLatch.await(5, TimeUnit.SECONDS)).isTrue();
             startLatch.countDown();
-            assertThat(doneLatch.await(30, TimeUnit.SECONDS)).isTrue();
+            assertThat(doneLatch.await(calculateAwaitSeconds(threadCount), TimeUnit.SECONDS)).isTrue();
         } finally {
             executorService.shutdownNow();
         }
@@ -361,6 +368,10 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
                 unexpectedFailures.size(),
                 System.currentTimeMillis() - startedAtMillis
         );
+    }
+
+    private long calculateAwaitSeconds(int threadCount) {
+        return Math.max(30L, threadCount / 10L);
     }
 
     private record OrderAttempt(Long userId, Long cartItemId) {
