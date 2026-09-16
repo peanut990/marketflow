@@ -14,7 +14,7 @@ import com.marketflow.product.repository.ProductRepository;
 import com.marketflow.support.IntegrationTest;
 import com.marketflow.user.domain.User;
 import com.marketflow.user.repository.UserRepository;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -60,8 +60,8 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
     @Autowired
     private OrderItemRepository orderItemRepository;
 
-    @BeforeEach
-    void setUp() {
+    @AfterEach
+    void tearDown() {
         orderItemRepository.deleteAll();
         orderRepository.deleteAll();
         cartItemRepository.deleteAll();

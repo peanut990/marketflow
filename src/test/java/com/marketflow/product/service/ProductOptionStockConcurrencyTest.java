@@ -9,7 +9,7 @@ import com.marketflow.product.repository.ProductOptionRepository;
 import com.marketflow.product.repository.ProductRepository;
 import com.marketflow.support.IntegrationTest;
 import com.marketflow.user.repository.UserRepository;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -51,8 +51,8 @@ class ProductOptionStockConcurrencyTest extends IntegrationTest {
     @Autowired
     private UserRepository userRepository;
 
-    @BeforeEach
-    void setUp() {
+    @AfterEach
+    void tearDown() {
         orderItemRepository.deleteAll();
         orderRepository.deleteAll();
         cartItemRepository.deleteAll();
