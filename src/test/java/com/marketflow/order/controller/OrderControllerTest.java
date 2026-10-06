@@ -6,6 +6,7 @@ import com.marketflow.order.domain.Order;
 import com.marketflow.order.domain.OrderItem;
 import com.marketflow.order.repository.OrderItemRepository;
 import com.marketflow.order.repository.OrderRepository;
+import com.marketflow.payment.repository.PaymentRepository;
 import com.marketflow.product.domain.Product;
 import com.marketflow.product.domain.ProductOption;
 import com.marketflow.product.repository.ProductOptionRepository;
@@ -50,12 +51,16 @@ class OrderControllerTest extends IntegrationTest {
     @Autowired
     private OrderItemRepository orderItemRepository;
 
+    @Autowired
+    private PaymentRepository paymentRepository;
+
     private User user;
     private User otherUser;
     private Product product;
 
     @BeforeEach
     void setUp() {
+        paymentRepository.deleteAll();
         orderItemRepository.deleteAll();
         orderRepository.deleteAll();
         cartItemRepository.deleteAll();

@@ -24,4 +24,12 @@ public interface ProductOptionRepository extends JpaRepository<ProductOption, Lo
                 and productOption.stockQuantity >= :quantity
             """)
     int decreaseStockAtomically(@Param("id") Long id, @Param("quantity") int quantity);
+
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            update ProductOption productOption
+            set productOption.stockQuantity = productOption.stockQuantity + :quantity
+            where productOption.id = :id
+            """)
+    int increaseStockAtomically(@Param("id") Long id, @Param("quantity") int quantity);
 }

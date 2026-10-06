@@ -5,6 +5,7 @@ import com.marketflow.cart.repository.CartItemRepository;
 import com.marketflow.order.dto.OrderCreateRequest;
 import com.marketflow.order.repository.OrderItemRepository;
 import com.marketflow.order.repository.OrderRepository;
+import com.marketflow.payment.repository.PaymentRepository;
 import com.marketflow.product.domain.Product;
 import com.marketflow.product.domain.ProductOption;
 import com.marketflow.product.exception.InactiveProductOptionException;
@@ -60,8 +61,12 @@ class OrderServiceConcurrencyTest extends IntegrationTest {
     @Autowired
     private OrderItemRepository orderItemRepository;
 
+    @Autowired
+    private PaymentRepository paymentRepository;
+
     @AfterEach
     void tearDown() {
+        paymentRepository.deleteAll();
         orderItemRepository.deleteAll();
         orderRepository.deleteAll();
         cartItemRepository.deleteAll();

@@ -10,6 +10,10 @@ import com.marketflow.order.dto.OrderDetailResponse;
 import com.marketflow.order.dto.OrderSummaryResponse;
 import com.marketflow.order.repository.OrderItemRepository;
 import com.marketflow.order.repository.OrderRepository;
+import com.marketflow.payment.domain.Payment;
+import com.marketflow.payment.domain.PaymentStatus;
+import com.marketflow.payment.exception.PaymentConflictException;
+import com.marketflow.payment.repository.PaymentRepository;
 import com.marketflow.product.domain.ProductOption;
 import com.marketflow.product.exception.InactiveProductOptionException;
 import com.marketflow.product.exception.InsufficientStockException;
@@ -44,6 +48,7 @@ public class OrderService {
     private final CartItemRepository cartItemRepository;
     private final ProductOptionRepository productOptionRepository;
     private final UserRepository userRepository;
+    private final PaymentRepository paymentRepository;
 
     @Transactional(readOnly = true)
     public Page<OrderSummaryResponse> getOrders(Long userId, Pageable pageable) {
@@ -90,13 +95,24 @@ public class OrderService {
 
     @Transactional
     public OrderDetailResponse cancelOrder(Long userId, Long orderId) {
-        Order order = getOrderByUser(userId, orderId);
+        Order order = orderRepository.findByUserIdAndIdForUpdate(userId, orderId)
+                .orElseThrow(() -> new NoSuchElementException("주문을 찾을 수 없습니다. id=" + orderId));
+        List<Payment> payments = paymentRepository.findAllByOrderIdOrderByCreatedAtAsc(orderId);
+        if (payments.stream().anyMatch(payment -> payment.getStatus() == PaymentStatus.IN_PROGRESS
+                || payment.getStatus() == PaymentStatus.DONE)
+                || payments.stream().filter(payment -> payment.getStatus() == PaymentStatus.READY).count() > 1) {
+            throw PaymentConflictException.stateConflict();
+        }
         List<OrderItem> orderItems = getOrderItems(order.getId());
 
         order.cancel();
-        orderItems.forEach(orderItem ->
-                orderItem.getProductOption().increaseStock(orderItem.getQuantity())
-        );
+        payments.stream().filter(payment -> payment.getStatus() == PaymentStatus.READY).forEach(Payment::expire);
+        orderItems.stream().sorted(Comparator.comparing(item -> item.getProductOption().getId()))
+                .forEach(item -> {
+                    if (productOptionRepository.increaseStockAtomically(item.getProductOption().getId(), item.getQuantity()) != 1) {
+                        throw PaymentConflictException.stateConflict();
+                    }
+                });
 
         return OrderDetailResponse.of(order, orderItems);
     }
