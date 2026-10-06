@@ -4,14 +4,24 @@ import com.marketflow.product.exception.InactiveProductOptionException;
 import com.marketflow.product.exception.InsufficientStockException;
 import com.marketflow.payment.exception.PaymentConflictException;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.NoSuchElementException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler({MissingRequestHeaderException.class, MethodArgumentTypeMismatchException.class,
+            HandlerMethodValidationException.class})
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleInvalidRequest(Exception exception) {
+        return new ErrorResponse("BAD_REQUEST", "필수 입력값과 입력 형식을 확인해 주세요.");
+    }
 
     @ExceptionHandler(PaymentConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
